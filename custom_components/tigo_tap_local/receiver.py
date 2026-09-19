@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections import deque
 import logging
 import threading
-import time
 from datetime import datetime, timezone
 
 import serial
@@ -16,16 +16,16 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from .const import CONF_BAUDRATE, CONF_SERIAL_PORT, DEFAULT_BAUDRATE, SIGNAL_FRAME
 
 _LOGGER = logging.getLogger(__name__)
-
 START = b"\x7e\x07"
 END = b"\x7e\x08"
 MAX_BUFFER = 8192
+FRAME_HISTORY_SIZE = 500
 
 
 class TapReceiver:
     """Receive bytes from TAP/CCA RS485 and extract observed framed traffic.
 
-    This class never writes to the serial port.
+    Receive-only: this class never writes to the serial port.
     """
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -39,10 +39,11 @@ class TapReceiver:
         self.frames_received = 0
         self.last_frame_hex: str | None = None
         self.last_frame_time: str | None = None
+        self.last_frame_length = 0
         self.connected = False
+        self.frame_history = deque(maxlen=FRAME_HISTORY_SIZE)
 
     def start(self) -> None:
-        """Start passive serial reader."""
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
@@ -52,7 +53,6 @@ class TapReceiver:
         self._thread.start()
 
     def stop(self) -> None:
-        """Stop reader."""
         self._stop.set()
         if self._serial is not None:
             try:
@@ -78,11 +78,7 @@ class TapReceiver:
                     self._serial = ser
                     self.connected = True
                     self._notify()
-                    _LOGGER.info(
-                        "Passive Tigo TAP RS485 receiver opened %s at %s 8N1",
-                        self.port,
-                        self.baudrate,
-                    )
+                    _LOGGER.info("Passive RS485 receiver opened %s at %s 8N1", self.port, self.baudrate)
                     while not self._stop.is_set():
                         chunk = ser.read(512)
                         if not chunk:
@@ -114,25 +110,36 @@ class TapReceiver:
                 return
             if start:
                 del buffer[:start]
-
             end = buffer.find(END, len(START))
             if end < 0:
                 return
-
             end += len(END)
             frame = bytes(buffer[:end])
             del buffer[:end]
+
+            timestamp = datetime.now(timezone.utc).isoformat()
+            frame_hex = frame.hex(" ").upper()
             self.frames_received += 1
-            self.last_frame_hex = frame.hex(" ").upper()
-            self.last_frame_time = datetime.now(timezone.utc).isoformat()
+            self.last_frame_hex = frame_hex
+            self.last_frame_time = timestamp
+            self.last_frame_length = len(frame)
+            self.frame_history.append(
+                {
+                    "number": self.frames_received,
+                    "timestamp_utc": timestamp,
+                    "length": len(frame),
+                    "hex": frame_hex,
+                }
+            )
             _LOGGER.info(
                 "Tigo RS485 frame #%d (%d bytes): %s",
-                self.frames_received,
-                len(frame),
-                self.last_frame_hex,
+                self.frames_received, len(frame), frame_hex,
             )
+            self._notify()
+
+    def recent_frames(self, count: int = 20) -> list[dict]:
+        """Return newest captured frames, newest first."""
+        return list(reversed(list(self.frame_history)[-count:]))
 
     def _notify(self) -> None:
-        self.hass.loop.call_soon_threadsafe(
-            async_dispatcher_send, self.hass, SIGNAL_FRAME
-        )
+        self.hass.loop.call_soon_threadsafe(async_dispatcher_send, self.hass, SIGNAL_FRAME)
