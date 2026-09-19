@@ -1,17 +1,11 @@
 {
   "config": {
-    "step": {
-      "user": {
-        "title": "Tigo TAP Local",
-        "description": "Wähle den USB-RS485-Adapter für den passiven TAP-Receiver. Der Teststand sendet keine Daten auf den RS485-Bus.",
-        "data": {
-          "serial_port": "Serielle Schnittstelle",
-          "baudrate": "Baudrate"
-        }
-      }
-    },
-    "abort": {
-      "already_configured": "Tigo TAP Local ist bereits konfiguriert."
-    }
+    "step": {"user": {
+      "title": "Tigo TAP Local",
+      "description": "Wähle den USB-RS485-Adapter für den passiven TAP-Empfang. Die Integration sendet keine Daten auf den RS485-Bus.",
+      "data": {"serial_port": "Serielle Schnittstelle", "baudrate": "Baudrate"},
+      "data_description": {"serial_port": "Bevorzugt einen stabilen Pfad unter /dev/serial/by-id/... verwenden.", "baudrate": "Für die TAP-Protokollaufzeichnung werden derzeit 38400 Baud verwendet."}
+    }},
+    "abort": {"already_configured": "Tigo TAP Local ist bereits konfiguriert."}
   }
 }
