@@ -3,6 +3,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.components import persistent_notification
 from .const import DATA_RECEIVER, DOMAIN
 
 async def async_setup_entry(hass:HomeAssistant,entry:ConfigEntry,async_add_entities:AddEntitiesCallback)->None:
@@ -16,3 +17,9 @@ class DiagnosticsZipButton(ButtonEntity):
         self._attr_unique_id=f"{entry.entry_id}_create_diagnostics_zip"; self.receiver=receiver
     async def async_press(self)->None:
         await self.hass.async_add_executor_job(self.receiver.create_diagnostics_zip)
+        persistent_notification.async_create(
+            self.hass,
+            f'Das Diagnosepaket wurde erstellt. [ZIP jetzt herunterladen]({self.receiver.zip_url})',
+            title="Tigo TAP Local",
+            notification_id="tigo_tap_local_diagnostics",
+        )
