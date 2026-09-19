@@ -158,15 +158,22 @@ class TapReceiver:
 
             tmp_zip.unlink(missing_ok=True)
             self._set_diagnostics_progress("zip",10)
-            # Captures are text/hex and compress well, but ZIP_STORED is deliberately
-            # used here: diagnostics should finish quickly on a Raspberry Pi.
-            with zipfile.ZipFile(tmp_zip,"w",compression=zipfile.ZIP_STORED,allowZip64=True) as z:
-                z.write(info,"system-info.txt")
+            # Fast DEFLATE level 1 keeps the archive small without the very long
+            # runtime of the earlier maximum/default compression path.
+            with zipfile.ZipFile(
+                tmp_zip,
+                "w",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=1,
+                allowZip64=True,
+            ) as z:
+                z.write(info,"system-info.txt",compress_type=zipfile.ZIP_DEFLATED,compresslevel=1)
                 total=max(1,sum(size for _,size in snapshots))
                 done=0
                 for p,size in snapshots:
                     zi=zipfile.ZipInfo(p.name)
-                    zi.compress_type=zipfile.ZIP_STORED
+                    zi.compress_type=zipfile.ZIP_DEFLATED
+                    zi._compresslevel=1
                     with p.open("rb") as source, z.open(zi,"w") as target:
                         remaining=size
                         while remaining>0:
