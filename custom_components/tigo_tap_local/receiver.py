@@ -1,7 +1,7 @@
 """Passive RS485 receiver with rotating raw capture and ZIP export."""
 from __future__ import annotations
 from collections import deque
-import csv, json, logging, threading, zipfile
+import json, logging, threading, zipfile
 from pathlib import Path
 from datetime import datetime, timezone
 import serial
@@ -28,6 +28,8 @@ class TapReceiver:
         self.decoder=TapProtocolDecoder(identities)
         self._saved_identities=self.decoder.persistent_snapshot()
         self.zip_path=self.capture_dir/"tigo-tap-diagnostics.zip"
+        self.diagnostics_stage="idle"
+        self.diagnostics_progress=0
 
     def start(self):
         self.capture_dir.mkdir(parents=True,exist_ok=True)
@@ -113,29 +115,26 @@ class TapReceiver:
         files=[p for p in [self.raw_path]+[self.capture_dir/f"capture.raw.{i}" for i in range(1,ROTATED_FILES+1)] if p.exists()]
         return sorted(files,key=lambda p:p.name,reverse=True)
 
+    def _set_diagnostics_progress(self,stage,progress):
+        self.diagnostics_stage=stage
+        self.diagnostics_progress=progress
+        self._notify()
+
     def create_diagnostics_zip(self):
-        """Create and validate diagnostics ZIP, publishing it only when complete."""
+        """Create a fast atomic snapshot archive without duplicating capture data."""
         tmp_zip=self.capture_dir/"tigo-tap-diagnostics.zip.tmp"
-        csv_file=self.capture_dir/"frames-export.csv"
-        log_file=self.capture_dir/"frames-export.log"
         info=self.capture_dir/"system-info.txt"
+        self._set_diagnostics_progress("snapshot",5)
         try:
-            # Stream capture rows to exports instead of keeping the whole capture in RAM.
-            with csv_file.open("w",newline="",encoding="utf-8") as csv_out, log_file.open("w",encoding="utf-8") as log_out:
-                writer=csv.writer(csv_out)
-                writer.writerow(["number","timestamp_utc","length","hex"])
-                for p in reversed(self._raw_files()):
-                    try:
-                        with p.open("r",encoding="utf-8") as source:
-                            for line in source:
-                                parts=line.rstrip("\n").split("\t",3)
-                                if len(parts)!=4:
-                                    continue
-                                writer.writerow(parts)
-                                n,ts,length,hx=parts
-                                log_out.write(f"{ts} #{n} {length}B {hx}\n")
-                    except OSError as err:
-                        _LOGGER.warning("Could not read %s: %s",p,err)
+            # Snapshot the current file list and sizes. ZipFile reads only this many
+            # bytes from the actively written capture.raw, so later appends are not
+            # part of this archive.
+            snapshots=[]
+            for p in self._raw_files():
+                try:
+                    snapshots.append((p,p.stat().st_size))
+                except OSError:
+                    continue
 
             info.write_text(
                 f"Tigo TAP Local diagnostics\n"
@@ -158,27 +157,43 @@ class TapReceiver:
             )
 
             tmp_zip.unlink(missing_ok=True)
-            with zipfile.ZipFile(tmp_zip,"w",zipfile.ZIP_DEFLATED,allowZip64=True) as z:
-                z.write(csv_file,"frames.csv")
-                z.write(log_file,"frames.log")
+            self._set_diagnostics_progress("zip",10)
+            # Captures are text/hex and compress well, but ZIP_STORED is deliberately
+            # used here: diagnostics should finish quickly on a Raspberry Pi.
+            with zipfile.ZipFile(tmp_zip,"w",compression=zipfile.ZIP_STORED,allowZip64=True) as z:
                 z.write(info,"system-info.txt")
-                for p in self._raw_files():
-                    z.write(p,p.name)
+                total=max(1,sum(size for _,size in snapshots))
+                done=0
+                for p,size in snapshots:
+                    zi=zipfile.ZipInfo(p.name)
+                    zi.compress_type=zipfile.ZIP_STORED
+                    with p.open("rb") as source, z.open(zi,"w") as target:
+                        remaining=size
+                        while remaining>0:
+                            chunk=source.read(min(1024*1024,remaining))
+                            if not chunk:
+                                break
+                            target.write(chunk)
+                            remaining-=len(chunk)
+                            done+=len(chunk)
+                            self._set_diagnostics_progress("zip",10+int(80*done/total))
 
-            # Do not expose a partial archive. Validate before atomic publication.
+            # Opening and reading the central directory is enough to reject a
+            # truncated archive without decompressing every capture again.
+            self._set_diagnostics_progress("validate",95)
             with zipfile.ZipFile(tmp_zip,"r") as z:
-                bad=z.testzip()
-                if bad is not None:
-                    raise zipfile.BadZipFile(f"CRC check failed for {bad}")
+                if not z.namelist():
+                    raise zipfile.BadZipFile("empty diagnostics archive")
 
             tmp_zip.replace(self.zip_path)
+            self._set_diagnostics_progress("ready",100)
             return self.zip_path
+        except Exception:
+            self._set_diagnostics_progress("error",0)
+            raise
         finally:
-            csv_file.unlink(missing_ok=True)
-            log_file.unlink(missing_ok=True)
             info.unlink(missing_ok=True)
             tmp_zip.unlink(missing_ok=True)
-            self._notify()
 
     def recent_frames(self,count=20):return list(reversed(list(self.frame_history)[-count:]))
     @property
