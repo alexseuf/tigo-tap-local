@@ -106,4 +106,6 @@ class TapFrameHistorySensor(TapSensorBase):
             "buffer_capacity": 500,
             "recent_20": recent,
             "note": "Newest frame first; full 500-frame buffer is kept in memory.",
+            "csv_download": self.receiver.csv_url,
+            "log_download": self.receiver.log_url,
         }
