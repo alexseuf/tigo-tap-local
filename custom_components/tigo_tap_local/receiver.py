@@ -8,7 +8,7 @@ import serial
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from .const import CONF_BAUDRATE, CONF_SERIAL_PORT, DEFAULT_BAUDRATE, SIGNAL_FRAME
+from .const import CONF_BAUDRATE, CONF_SERIAL_PORT, DEFAULT_BAUDRATE, SIGNAL_FRAME\nfrom .decoder import TapProtocolDecoder
 
 _LOGGER=logging.getLogger(__name__)
 START=b"\x7e\x07"; END=b"\x7e\x08"; MAX_BUFFER=8192; FRAME_HISTORY_SIZE=500
@@ -20,7 +20,7 @@ class TapReceiver:
         self.hass=hass; self.port=entry.data[CONF_SERIAL_PORT]; self.baudrate=entry.data.get(CONF_BAUDRATE,DEFAULT_BAUDRATE)
         self._serial=None; self._thread=None; self._stop=threading.Event()
         self.bytes_received=0; self.frames_received=0; self.last_frame_hex=None; self.last_frame_time=None; self.last_frame_length=0; self.connected=False
-        self.frame_history=deque(maxlen=FRAME_HISTORY_SIZE)
+        self.frame_history=deque(maxlen=FRAME_HISTORY_SIZE); self.decoder=TapProtocolDecoder()
         self.capture_dir=Path(hass.config.path("www","tigo_tap_local")); self.raw_path=self.capture_dir/"capture.raw"
         self.zip_path=self.capture_dir/"tigo-tap-diagnostics.zip"
 
@@ -65,7 +65,7 @@ class TapReceiver:
             end+=len(END); frame=bytes(buffer[:end]); del buffer[:end]
             ts=datetime.now(timezone.utc).isoformat(); hx=frame.hex(" ").upper(); self.frames_received+=1
             self.last_frame_hex=hx; self.last_frame_time=ts; self.last_frame_length=len(frame)
-            r={"number":self.frames_received,"timestamp_utc":ts,"length":len(frame),"hex":hx}; self.frame_history.append(r); self._persist(r); self._notify()
+            r={"number":self.frames_received,"timestamp_utc":ts,"length":len(frame),"hex":hx}; self.frame_history.append(r); self.decoder.consume_wire_frame(frame); self._persist(r); self._notify()
 
     def _rotate(self):
         if not self.raw_path.exists() or self.raw_path.stat().st_size<MAX_FILE_BYTES:return
