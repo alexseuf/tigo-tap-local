@@ -67,7 +67,12 @@ class DiagnosticsZipButton(ButtonEntity):
                 self._last_size=None
             persistent_notification.async_create(
                 self.hass,
-                f'Das Diagnosepaket ist fertig. [ZIP jetzt herunterladen]({self.receiver.zip_url})',
+                (
+                    "Das Diagnosepaket ist fertig.\n\n"
+                    f"Download im Browser: **{self.receiver.zip_url}**\n\n"
+                    f"Datei auf Home Assistant: **/config/www/tigo_tap_local/tigo-tap-diagnostics.zip**\n\n"
+                    f"[ZIP jetzt herunterladen]({self.receiver.zip_url})"
+                ),
                 title="Tigo TAP Local – Diagnose fertig",
                 notification_id="tigo_tap_local_diagnostics",
             )
