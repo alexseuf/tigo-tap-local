@@ -33,6 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         TapDecodedNodesSensor(entry, receiver),
         TapPowerReportsSensor(entry, receiver),
         TapProtocolHealthSensor(entry, receiver),
+        TapDiagnosticsArchiveSensor(entry, receiver),
     ])
 
     known_nodes = set()
@@ -198,6 +199,34 @@ class TapProtocolHealthSensor(TapSensorBase):
             "power_report_rejected": d.power_report_rejected,
             "topology_reports": d.topology_reports,
         }
+
+class TapDiagnosticsArchiveSensor(TapSensorBase):
+    """Expose the diagnostics archive location directly in Home Assistant."""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:folder-download"
+
+    def __init__(self, entry, receiver):
+        super().__init__(entry, receiver, "diagnostics_archive", "Diagnose ZIP")
+
+    @property
+    def native_value(self):
+        return self.receiver.zip_url if self.receiver.zip_path.exists() else "not created"
+
+    @property
+    def extra_state_attributes(self):
+        try:
+            size=self.receiver.zip_path.stat().st_size if self.receiver.zip_path.exists() else None
+        except OSError:
+            size=None
+        return {
+            "download_url": self.receiver.zip_url if self.receiver.zip_path.exists() else None,
+            "file_path": "/config/www/tigo_tap_local/tigo-tap-diagnostics.zip",
+            "zip_size_bytes": size,
+            "status": self.receiver.diagnostics_stage,
+            "progress_percent": self.receiver.diagnostics_progress,
+            "note": "Browser-URL = Home-Assistant-Adresse + /local/tigo_tap_local/tigo-tap-diagnostics.zip",
+        }
+
 
 class TapPowerReportsSensor(TapSensorBase):
     """Number of successfully decoded TS4 power reports."""
