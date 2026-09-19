@@ -1,7 +1,7 @@
 """Passive RS485 receiver with rotating raw capture and ZIP export."""
 from __future__ import annotations
 from collections import deque
-import csv, logging, threading, zipfile
+import csv, json, logging, threading, zipfile
 from pathlib import Path
 from datetime import datetime, timezone
 import serial
@@ -21,8 +21,12 @@ class TapReceiver:
         self.hass=hass; self.port=entry.data[CONF_SERIAL_PORT]; self.baudrate=entry.data.get(CONF_BAUDRATE,DEFAULT_BAUDRATE)
         self._serial=None; self._thread=None; self._stop=threading.Event()
         self.bytes_received=0; self.frames_received=0; self.last_frame_hex=None; self.last_frame_time=None; self.last_frame_length=0; self.connected=False
-        self.frame_history=deque(maxlen=FRAME_HISTORY_SIZE); self.decoder=TapProtocolDecoder()
+        self.frame_history=deque(maxlen=FRAME_HISTORY_SIZE)
         self.capture_dir=Path(hass.config.path("www","tigo_tap_local")); self.raw_path=self.capture_dir/"capture.raw"
+        self.identity_path=Path(hass.config.path(".storage","tigo_tap_local_nodes.json"))
+        identities=self._load_identities()
+        self.decoder=TapProtocolDecoder(identities)
+        self._saved_identities=self.decoder.persistent_snapshot()
         self.zip_path=self.capture_dir/"tigo-tap-diagnostics.zip"
 
     def start(self):
@@ -66,7 +70,29 @@ class TapReceiver:
             end+=len(END); frame=bytes(buffer[:end]); del buffer[:end]
             ts=datetime.now(timezone.utc).isoformat(); hx=frame.hex(" ").upper(); self.frames_received+=1
             self.last_frame_hex=hx; self.last_frame_time=ts; self.last_frame_length=len(frame)
-            r={"number":self.frames_received,"timestamp_utc":ts,"length":len(frame),"hex":hx}; self.frame_history.append(r); self.decoder.consume_wire_frame(frame); self._persist(r); self._notify()
+            r={"number":self.frames_received,"timestamp_utc":ts,"length":len(frame),"hex":hx}; self.frame_history.append(r)
+            self.decoder.consume_wire_frame(frame); self._persist_identities_if_changed(); self._persist(r); self._notify()
+
+    def _load_identities(self):
+        try:
+            if self.identity_path.exists():
+                data=json.loads(self.identity_path.read_text(encoding="utf-8"))
+                return data if isinstance(data,dict) else {}
+        except (OSError,json.JSONDecodeError) as err:
+            _LOGGER.warning("Could not load persisted Tigo node identities: %s",err)
+        return {}
+
+    def _persist_identities_if_changed(self):
+        identities=self.decoder.persistent_snapshot()
+        if identities==self._saved_identities:return
+        try:
+            self.identity_path.parent.mkdir(parents=True,exist_ok=True)
+            tmp=self.identity_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(identities,indent=2,sort_keys=True),encoding="utf-8")
+            tmp.replace(self.identity_path)
+            self._saved_identities=identities
+        except OSError as err:
+            _LOGGER.warning("Could not persist Tigo node identities: %s",err)
 
     def _rotate(self):
         if not self.raw_path.exists() or self.raw_path.stat().st_size<MAX_FILE_BYTES:return
