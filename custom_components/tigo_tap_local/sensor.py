@@ -32,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         TapFrameHistorySensor(entry, receiver),
         TapDecodedNodesSensor(entry, receiver),
         TapPowerReportsSensor(entry, receiver),
+        TapProtocolHealthSensor(entry, receiver),
     ])
 
     known_nodes = set()
@@ -165,6 +166,37 @@ class TapDecodedNodesSensor(TapSensorBase):
             "pv_packets": self.receiver.decoder.pv_packets,
             "decode_errors": self.receiver.decoder.decode_errors,
             "note": "Serial becomes available after a topology report for that node is observed.",
+        }
+
+
+
+class TapProtocolHealthSensor(TapSensorBase):
+    """CRC and decoder health counters for the passive gateway stream."""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:check-decagram-outline"
+
+    def __init__(self, entry, receiver):
+        super().__init__(entry, receiver, "protocol_health", "Protocol health")
+
+    @property
+    def native_value(self):
+        return self.receiver.decoder.crc_errors
+
+    @property
+    def extra_state_attributes(self):
+        d=self.receiver.decoder
+        checked=d.crc_valid+d.crc_errors
+        return {
+            "frames_total": d.frames_total,
+            "crc_valid": d.crc_valid,
+            "crc_errors": d.crc_errors,
+            "crc_error_rate_percent": round(100*d.crc_errors/checked,4) if checked else 0,
+            "decode_errors": d.decode_errors,
+            "receive_responses": d.receive_responses,
+            "pv_packets": d.pv_packets,
+            "power_reports": d.power_reports,
+            "power_report_rejected": d.power_report_rejected,
+            "topology_reports": d.topology_reports,
         }
 
 class TapPowerReportsSensor(TapSensorBase):
