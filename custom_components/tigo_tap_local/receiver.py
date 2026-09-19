@@ -128,7 +128,7 @@ class TapReceiver:
         with log_file.open("w",encoding="utf-8") as f:
             for n,ts,length,hx in rows:f.write(f"{ts} #{n} {length}B {hx}\n")
         info=self.capture_dir/"system-info.txt"
-        info.write_text(f"Tigo TAP Local diagnostics\nGenerated: {datetime.now(timezone.utc).isoformat()}\nMode: passive_rx_only\nSerial port: {self.port}\nBaudrate: {self.baudrate}\nFrames this session: {self.frames_received}\nBytes this session: {self.bytes_received}\nRotation: {ROTATED_FILES} x {MAX_FILE_BYTES//1024//1024} MiB\n",encoding="utf-8")
+        info.write_text(f"Tigo TAP Local diagnostics\nGenerated: {datetime.now(timezone.utc).isoformat()}\nMode: passive_rx_only\nSerial port: {self.port}\nBaudrate: {self.baudrate}\nFrames this session: {self.frames_received}\nBytes this session: {self.bytes_received}\nRotation: {ROTATED_FILES} x {MAX_FILE_BYTES//1024//1024} MiB\nCRC valid: {self.decoder.crc_valid}\nCRC errors: {self.decoder.crc_errors}\nDecode errors: {self.decoder.decode_errors}\nReceive responses: {self.decoder.receive_responses}\nPV packets: {self.decoder.pv_packets}\nPower reports: {self.decoder.power_reports}\nRejected power reports: {self.decoder.power_report_rejected}\nTopology reports: {self.decoder.topology_reports}\n",encoding="utf-8")
         with zipfile.ZipFile(self.zip_path,"w",zipfile.ZIP_DEFLATED) as z:
             z.write(csv_file,"frames.csv"); z.write(log_file,"frames.log"); z.write(info,"system-info.txt")
             for p in self._raw_files():z.write(p,p.name)
