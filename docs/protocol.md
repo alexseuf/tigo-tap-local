@@ -70,3 +70,26 @@ Raw captures should remain unmodified. Decoded/annotated versions should be sepa
 ## Implementation principle
 
 Start receive-only. Add transmission only after framing, checksums, escaping and request semantics are verified against known-good traffic.
+
+
+## Topology Report length: 22 vs 23 bytes
+
+There is a confirmed length discrepancy that future decoder work must preserve.
+
+- The reverse-engineered TapTap structure implies a **22-byte** Topology Report payload.
+- Real passive CCA ↔ TAP captures from this project on **2026-09-19** contain **23-byte** Topology Report payloads.
+- In the analyzed capture set, **10/10 observed Topology Reports were 23 bytes**.
+- The long TS4 address / barcode field is still located at payload bytes **8..15** (\`data[8:16]\`) in the observed 23-byte reports.
+- The extra byte appears after the fields used for identity decoding. Its meaning is not yet established.
+
+Example observed events in the retained capture history:
+
+| UTC timestamp | Node | Payload length |
+| --- | ---: | ---: |
+| 2026-09-19 09:44:17.837657 | 5 | 23 |
+| 2026-09-19 09:55:31.110120 | 5 | 23 |
+| 2026-09-19 09:59:37.138611 | 12 | 23 |
+| 2026-09-19 10:01:14.514988 | 3 | 23 |
+| 2026-09-19 10:01:18.615911 | 4 | 23 |
+
+**Implementation rule:** do not hard-code only one of these lengths. The decoder should accept both 22- and 23-byte variants while decoding the common identity fields conservatively. Any future change to this behavior should be checked against real captures, not only the upstream struct definition.
