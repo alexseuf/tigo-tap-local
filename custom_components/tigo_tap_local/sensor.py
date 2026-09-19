@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfPower,
@@ -199,6 +202,7 @@ def make_node_entities(entry, receiver, node_id):
         TapNodeMeasurementSensor(entry, receiver, node_id, "temperature", "Temperature", SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, 1),
         TapNodeMeasurementSensor(entry, receiver, node_id, "duty_cycle", "Duty cycle", None, PERCENTAGE, 2),
         TapNodeMeasurementSensor(entry, receiver, node_id, "rssi", "RSSI", None, None, 0),
+        TapNodeLastUpdateSensor(entry, receiver, node_id),
     ]
 
 
@@ -263,3 +267,21 @@ class TapNodeMeasurementSensor(TapNodeBase):
     def native_value(self):
         node = self._node
         return getattr(node, self.field, None) if node else None
+
+
+class TapNodeLastUpdateSensor(TapNodeBase):
+    """Timestamp of the most recent decoded power report for this optimizer."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clock-check-outline"
+
+    def __init__(self, entry, receiver, node_id):
+        super().__init__(entry, receiver, node_id, "last_update", "Last update")
+
+    @property
+    def native_value(self):
+        node = self._node
+        if not node or not node.last_power_report:
+            return None
+        return datetime.fromisoformat(node.last_power_report)
