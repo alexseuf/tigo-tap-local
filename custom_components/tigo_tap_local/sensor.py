@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DATA_RECEIVER, DOMAIN, SIGNAL_FRAME
 
@@ -22,6 +23,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         TapDecodedNodesSensor(entry, receiver),
         TapPowerReportsSensor(entry, receiver),
     ])
+
+    known_nodes = set()
+
+    def add_node_entities() -> None:
+        new_nodes = sorted(set(receiver.decoder.nodes) - known_nodes)
+        if not new_nodes:
+            return
+        known_nodes.update(new_nodes)
+        async_add_entities(
+            [TapNodeStatusSensor(entry, receiver, node_id) for node_id in new_nodes]
+        )
+
+    add_node_entities()
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, SIGNAL_FRAME, add_node_entities)
+    )
 
 
 class TapSensorBase(SensorEntity):
@@ -137,3 +154,52 @@ class TapPowerReportsSensor(TapSensorBase):
     @property
     def native_value(self):
         return self.receiver.decoder.power_reports
+
+
+class TapNodeStatusSensor(TapSensorBase):
+    """One lightweight entity per TS4 node so Home Assistant creates a device."""
+
+    _attr_icon = "mdi:solar-panel"
+
+    def __init__(self, entry, receiver, node_id):
+        self.node_id = node_id
+        super().__init__(entry, receiver, f"node_{node_id:04x}_status", "Status")
+
+    @property
+    def _node(self):
+        return self.receiver.decoder.nodes.get(self.node_id)
+
+    @property
+    def device_info(self):
+        node = self._node
+        serial = node.serial if node else None
+        name = f"Tigo TS4 {serial}" if serial else f"Tigo TS4 Node {self.node_id}"
+        info = DeviceInfo(
+            identifiers={(DOMAIN, f"{self.entry.entry_id}_node_{self.node_id}")},
+            name=name,
+            manufacturer="Tigo Energy",
+            model="TS4",
+        )
+        if serial:
+            info["serial_number"] = serial
+        return info
+
+    @property
+    def native_value(self):
+        node = self._node
+        return "online" if node and node.last_seen else "discovered"
+
+    @property
+    def extra_state_attributes(self):
+        node = self._node
+        if node is None:
+            return {"node_id": self.node_id}
+        return {
+            "node_id": self.node_id,
+            "node_id_hex": f"{self.node_id:04X}",
+            "serial": node.serial,
+            "long_address": node.long_address,
+            "last_seen": node.last_seen,
+            "power_reports": node.reports,
+            "identity_persisted": bool(node.serial or node.long_address),
+        }
