@@ -27,14 +27,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     known_nodes = set()
 
     def add_node_entities() -> None:
+        """Add devices for nodes discovered after platform setup.
+
+        Dispatcher callbacks may be invoked while the receiver thread is active.
+        Schedule entity creation on Home Assistant's event loop rather than
+        calling async_add_entities directly from that callback.
+        """
         new_nodes = sorted(set(receiver.decoder.nodes) - known_nodes)
         if not new_nodes:
             return
         known_nodes.update(new_nodes)
-        async_add_entities(
-            [TapNodeStatusSensor(entry, receiver, node_id) for node_id in new_nodes]
-        )
+        entities = [TapNodeStatusSensor(entry, receiver, node_id) for node_id in new_nodes]
+        hass.loop.call_soon_threadsafe(async_add_entities, entities)
 
+    # Add anything already known at startup and keep discovering live nodes.
     add_node_entities()
     entry.async_on_unload(
         async_dispatcher_connect(hass, SIGNAL_FRAME, add_node_entities)
