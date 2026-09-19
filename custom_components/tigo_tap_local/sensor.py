@@ -18,7 +18,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         TapFramesSensor(entry, receiver),
         TapBytesSensor(entry, receiver),
         TapLastFrameSensor(entry, receiver),
-        TapFrameHistorySensor(entry, receiver),
+        TapFrameHistorySensor(entry, receiver),\n        TapDecodedNodesSensor(entry, receiver),\n        TapPowerReportsSensor(entry, receiver),
     ])
 
 
@@ -109,3 +109,29 @@ class TapFrameHistorySensor(TapSensorBase):
             "diagnostics_zip": self.receiver.zip_url,
             "download_hint": "Press Diagnosepaket erstellen, then open diagnostics_zip.",
         }
+
+
+class TapDecodedNodesSensor(TapSensorBase):
+    """Nodes recognized from passive PV traffic."""
+    def __init__(self, entry, receiver):
+        super().__init__(entry, receiver, "decoded_nodes", "Decoded nodes")
+    @property
+    def native_value(self):
+        return len(self.receiver.decoder.nodes)
+    @property
+    def extra_state_attributes(self):
+        return {
+            "nodes": self.receiver.decoder.snapshot(),
+            "topology_reports": self.receiver.decoder.topology_reports,
+            "pv_packets": self.receiver.decoder.pv_packets,
+            "decode_errors": self.receiver.decoder.decode_errors,
+            "note": "Serial becomes available after a topology report for that node is observed.",
+        }
+
+class TapPowerReportsSensor(TapSensorBase):
+    """Number of successfully decoded TS4 power reports."""
+    def __init__(self, entry, receiver):
+        super().__init__(entry, receiver, "power_reports", "Decoded power reports")
+    @property
+    def native_value(self):
+        return self.receiver.decoder.power_reports
