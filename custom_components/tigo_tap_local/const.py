@@ -1,5 +1,5 @@
 DOMAIN = "tigo_tap_local"
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "button"]
 
 CONF_SERIAL_PORT = "serial_port"
 CONF_BAUDRATE = "baudrate"
