@@ -8,7 +8,8 @@ import serial
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from .const import CONF_BAUDRATE, CONF_SERIAL_PORT, DEFAULT_BAUDRATE, SIGNAL_FRAME\nfrom .decoder import TapProtocolDecoder
+from .const import CONF_BAUDRATE, CONF_SERIAL_PORT, DEFAULT_BAUDRATE, SIGNAL_FRAME
+from .decoder import TapProtocolDecoder
 
 _LOGGER=logging.getLogger(__name__)
 START=b"\x7e\x07"; END=b"\x7e\x08"; MAX_BUFFER=8192; FRAME_HISTORY_SIZE=500
