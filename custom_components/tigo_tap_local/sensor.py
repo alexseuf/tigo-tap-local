@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfPower,
+    UnitOfTemperature,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -37,7 +44,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         if not new_nodes:
             return
         known_nodes.update(new_nodes)
-        entities = [TapNodeStatusSensor(entry, receiver, node_id) for node_id in new_nodes]
+        entities = [
+            entity
+            for node_id in new_nodes
+            for entity in make_node_entities(entry, receiver, node_id)
+        ]
         hass.loop.call_soon_threadsafe(async_add_entities, entities)
 
     # Add anything already known at startup and keep discovering live nodes.
@@ -162,14 +173,41 @@ class TapPowerReportsSensor(TapSensorBase):
         return self.receiver.decoder.power_reports
 
 
-class TapNodeStatusSensor(TapSensorBase):
-    """One lightweight entity per TS4 node so Home Assistant creates a device."""
+def _node_device_info(entry, node_id, node):
+    serial = node.serial if node else None
+    name = f"Tigo TS4 {serial}" if serial else f"Tigo TS4 Node {node_id}"
+    info = DeviceInfo(
+        identifiers={(DOMAIN, f"{entry.entry_id}_node_{node_id}")},
+        name=name,
+        manufacturer="Tigo Energy",
+        model="TS4",
+    )
+    if serial:
+        info["serial_number"] = serial
+    return info
 
-    _attr_icon = "mdi:solar-panel"
 
-    def __init__(self, entry, receiver, node_id):
+def make_node_entities(entry, receiver, node_id):
+    """Create all entities belonging to one TS4 optimizer."""
+    return [
+        TapNodeStatusSensor(entry, receiver, node_id),
+        TapNodeMeasurementSensor(entry, receiver, node_id, "voltage_in", "Input voltage", SensorDeviceClass.VOLTAGE, UnitOfElectricPotential.VOLT, 2),
+        TapNodeMeasurementSensor(entry, receiver, node_id, "voltage_out", "Output voltage", SensorDeviceClass.VOLTAGE, UnitOfElectricPotential.VOLT, 2),
+        TapNodeMeasurementSensor(entry, receiver, node_id, "current_in", "Input current", SensorDeviceClass.CURRENT, UnitOfElectricCurrent.AMPERE, 3),
+        TapNodeMeasurementSensor(entry, receiver, node_id, "current_out", "Output current", SensorDeviceClass.CURRENT, UnitOfElectricCurrent.AMPERE, 3),
+        TapNodeMeasurementSensor(entry, receiver, node_id, "power", "Power", SensorDeviceClass.POWER, UnitOfPower.WATT, 1),
+        TapNodeMeasurementSensor(entry, receiver, node_id, "temperature", "Temperature", SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, 1),
+        TapNodeMeasurementSensor(entry, receiver, node_id, "duty_cycle", "Duty cycle", None, PERCENTAGE, 2),
+        TapNodeMeasurementSensor(entry, receiver, node_id, "rssi", "RSSI", None, None, 0),
+    ]
+
+
+class TapNodeBase(TapSensorBase):
+    """Base class for entities belonging to one optimizer."""
+
+    def __init__(self, entry, receiver, node_id, key, name):
         self.node_id = node_id
-        super().__init__(entry, receiver, f"node_{node_id:04x}_status", "Status")
+        super().__init__(entry, receiver, f"node_{node_id:04x}_{key}", name)
 
     @property
     def _node(self):
@@ -177,18 +215,16 @@ class TapNodeStatusSensor(TapSensorBase):
 
     @property
     def device_info(self):
-        node = self._node
-        serial = node.serial if node else None
-        name = f"Tigo TS4 {serial}" if serial else f"Tigo TS4 Node {self.node_id}"
-        info = DeviceInfo(
-            identifiers={(DOMAIN, f"{self.entry.entry_id}_node_{self.node_id}")},
-            name=name,
-            manufacturer="Tigo Energy",
-            model="TS4",
-        )
-        if serial:
-            info["serial_number"] = serial
-        return info
+        return _node_device_info(self.entry, self.node_id, self._node)
+
+
+class TapNodeStatusSensor(TapNodeBase):
+    """Connectivity/identity entity for one TS4 node."""
+
+    _attr_icon = "mdi:solar-panel"
+
+    def __init__(self, entry, receiver, node_id):
+        super().__init__(entry, receiver, node_id, "status", "Status")
 
     @property
     def native_value(self):
@@ -209,3 +245,21 @@ class TapNodeStatusSensor(TapSensorBase):
             "power_reports": node.reports,
             "identity_persisted": bool(node.serial or node.long_address),
         }
+
+
+class TapNodeMeasurementSensor(TapNodeBase):
+    """A decoded measurement from a TS4 power report."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, entry, receiver, node_id, field, name, device_class, unit, precision):
+        self.field = field
+        self._attr_device_class = device_class
+        self._attr_native_unit_of_measurement = unit
+        self._attr_suggested_display_precision = precision
+        super().__init__(entry, receiver, node_id, field, name)
+
+    @property
+    def native_value(self):
+        node = self._node
+        return getattr(node, self.field, None) if node else None
