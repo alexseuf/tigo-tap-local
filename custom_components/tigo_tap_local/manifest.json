@@ -5,7 +5,7 @@
   "config_flow": true,
   "documentation": "https://github.com/alexseuf/tigo-tap-local",
   "issue_tracker": "https://github.com/alexseuf/tigo-tap-local/issues",
-  "iot_class": "local_polling",
+  "iot_class": "local_push",
   "requirements": ["pyserial>=3.5"],
-  "version": "0.0.1-beta.1"
+  "version": "0.0.2-beta.1"
 }
