@@ -114,26 +114,71 @@ class TapReceiver:
         return sorted(files,key=lambda p:p.name,reverse=True)
 
     def create_diagnostics_zip(self):
-        """Create one downloadable ZIP containing CSV, LOG, raw captures and system info."""
-        rows=[]
-        for p in reversed(self._raw_files()):
-            try:
-                for line in p.read_text(encoding="utf-8").splitlines():
-                    parts=line.split("\t",3)
-                    if len(parts)==4:rows.append(parts)
-            except OSError as err:_LOGGER.warning("Could not read %s: %s",p,err)
-        csv_file=self.capture_dir/"frames-export.csv"; log_file=self.capture_dir/"frames-export.log"
-        with csv_file.open("w",newline="",encoding="utf-8") as f:
-            w=csv.writer(f); w.writerow(["number","timestamp_utc","length","hex"]); w.writerows(rows)
-        with log_file.open("w",encoding="utf-8") as f:
-            for n,ts,length,hx in rows:f.write(f"{ts} #{n} {length}B {hx}\n")
+        """Create and validate diagnostics ZIP, publishing it only when complete."""
+        tmp_zip=self.capture_dir/"tigo-tap-diagnostics.zip.tmp"
+        csv_file=self.capture_dir/"frames-export.csv"
+        log_file=self.capture_dir/"frames-export.log"
         info=self.capture_dir/"system-info.txt"
-        info.write_text(f"Tigo TAP Local diagnostics\nGenerated: {datetime.now(timezone.utc).isoformat()}\nMode: passive_rx_only\nSerial port: {self.port}\nBaudrate: {self.baudrate}\nFrames this session: {self.frames_received}\nBytes this session: {self.bytes_received}\nRotation: {ROTATED_FILES} x {MAX_FILE_BYTES//1024//1024} MiB\nCRC valid: {self.decoder.crc_valid}\nCRC errors: {self.decoder.crc_errors}\nDecode errors: {self.decoder.decode_errors}\nReceive responses: {self.decoder.receive_responses}\nPV packets: {self.decoder.pv_packets}\nPower reports: {self.decoder.power_reports}\nRejected power reports: {self.decoder.power_report_rejected}\nTopology reports: {self.decoder.topology_reports}\n",encoding="utf-8")
-        with zipfile.ZipFile(self.zip_path,"w",zipfile.ZIP_DEFLATED) as z:
-            z.write(csv_file,"frames.csv"); z.write(log_file,"frames.log"); z.write(info,"system-info.txt")
-            for p in self._raw_files():z.write(p,p.name)
-        csv_file.unlink(missing_ok=True); log_file.unlink(missing_ok=True); info.unlink(missing_ok=True)
-        self._notify(); return self.zip_path
+        try:
+            # Stream capture rows to exports instead of keeping the whole capture in RAM.
+            with csv_file.open("w",newline="",encoding="utf-8") as csv_out, log_file.open("w",encoding="utf-8") as log_out:
+                writer=csv.writer(csv_out)
+                writer.writerow(["number","timestamp_utc","length","hex"])
+                for p in reversed(self._raw_files()):
+                    try:
+                        with p.open("r",encoding="utf-8") as source:
+                            for line in source:
+                                parts=line.rstrip("\n").split("\t",3)
+                                if len(parts)!=4:
+                                    continue
+                                writer.writerow(parts)
+                                n,ts,length,hx=parts
+                                log_out.write(f"{ts} #{n} {length}B {hx}\n")
+                    except OSError as err:
+                        _LOGGER.warning("Could not read %s: %s",p,err)
+
+            info.write_text(
+                f"Tigo TAP Local diagnostics\n"
+                f"Generated: {datetime.now(timezone.utc).isoformat()}\n"
+                f"Mode: passive_rx_only\n"
+                f"Serial port: {self.port}\n"
+                f"Baudrate: {self.baudrate}\n"
+                f"Frames this session: {self.frames_received}\n"
+                f"Bytes this session: {self.bytes_received}\n"
+                f"Rotation: {ROTATED_FILES} x {MAX_FILE_BYTES//1024//1024} MiB\n"
+                f"CRC valid: {self.decoder.crc_valid}\n"
+                f"CRC errors: {self.decoder.crc_errors}\n"
+                f"Decode errors: {self.decoder.decode_errors}\n"
+                f"Receive responses: {self.decoder.receive_responses}\n"
+                f"PV packets: {self.decoder.pv_packets}\n"
+                f"Power reports: {self.decoder.power_reports}\n"
+                f"Rejected power reports: {self.decoder.power_report_rejected}\n"
+                f"Topology reports: {self.decoder.topology_reports}\n",
+                encoding="utf-8",
+            )
+
+            tmp_zip.unlink(missing_ok=True)
+            with zipfile.ZipFile(tmp_zip,"w",zipfile.ZIP_DEFLATED,allowZip64=True) as z:
+                z.write(csv_file,"frames.csv")
+                z.write(log_file,"frames.log")
+                z.write(info,"system-info.txt")
+                for p in self._raw_files():
+                    z.write(p,p.name)
+
+            # Do not expose a partial archive. Validate before atomic publication.
+            with zipfile.ZipFile(tmp_zip,"r") as z:
+                bad=z.testzip()
+                if bad is not None:
+                    raise zipfile.BadZipFile(f"CRC check failed for {bad}")
+
+            tmp_zip.replace(self.zip_path)
+            return self.zip_path
+        finally:
+            csv_file.unlink(missing_ok=True)
+            log_file.unlink(missing_ok=True)
+            info.unlink(missing_ok=True)
+            tmp_zip.unlink(missing_ok=True)
+            self._notify()
 
     def recent_frames(self,count=20):return list(reversed(list(self.frame_history)[-count:]))
     @property
