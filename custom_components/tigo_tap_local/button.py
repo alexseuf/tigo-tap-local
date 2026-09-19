@@ -24,8 +24,9 @@ class DiagnosticsZipButton(ButtonEntity):
     @property
     def extra_state_attributes(self):
         return {
-            "status": "creating" if self._running else "ready",
-            "download_url": self.receiver.zip_url if self.receiver.zip_path.exists() else None,
+            "status": self.receiver.diagnostics_stage if self._running else "ready",
+            "progress_percent": self.receiver.diagnostics_progress if self._running else 100 if self._last_created else 0,
+            "download_url": self.receiver.zip_url if self.receiver.zip_path.exists() and not self._running else None,
             "last_created": self._last_created,
             "zip_size_bytes": self._last_size,
         }
@@ -42,7 +43,7 @@ class DiagnosticsZipButton(ButtonEntity):
         self.async_write_ha_state()
         persistent_notification.async_create(
             self.hass,
-            "Das Diagnosepaket wird erstellt. Bitte warten; bei großen Mitschnitten kann das etwas dauern.",
+            "Das Diagnosepaket wird als schneller Snapshot erstellt. Den Fortschritt siehst du in den Attributen des Buttons.",
             title="Tigo TAP Local – Diagnose läuft",
             notification_id="tigo_tap_local_diagnostics",
         )
