@@ -3,7 +3,11 @@
     "step": {
       "user": {
         "title": "Tigo TAP Local",
-        "description": "Experimental local Tigo TAP integration. RS485 configuration will be added when active TAP polling is ready."
+        "description": "Select the USB-RS485 adapter for passive TAP reception. This test build does not transmit on the RS485 bus.",
+        "data": {
+          "serial_port": "Serial port",
+          "baudrate": "Baud rate"
+        }
       }
     },
     "abort": {
