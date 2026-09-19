@@ -27,9 +27,20 @@ class NodeTelemetry:
     reports:int=0
 
 class TapProtocolDecoder:
-    def __init__(self)->None:
+    def __init__(self, persistent_nodes:dict|None=None)->None:
         self.packet_numbers={}
         self.nodes={}
+        if persistent_nodes:
+            for key, identity in persistent_nodes.items():
+                try:
+                    node_id=int(key)
+                except (TypeError,ValueError):
+                    continue
+                self.nodes[node_id]=NodeTelemetry(
+                    node_id=node_id,
+                    serial=identity.get("serial"),
+                    long_address=identity.get("long_address"),
+                )
         self.power_reports=0
         self.topology_reports=0
         self.pv_packets=0
@@ -124,6 +135,17 @@ class TapProtocolDecoder:
         long_addr=data[8:16]
         n=self._node(node); n.long_address=":".join(f"{b:02X}" for b in long_addr); n.serial=self._barcode(long_addr)
         n.last_seen=datetime.now(timezone.utc).isoformat(); self.topology_reports+=1
+
+    def persistent_snapshot(self)->dict:
+        """Return stable node identity data suitable for persistent storage."""
+        return {
+            str(node): {
+                "serial": value.serial,
+                "long_address": value.long_address,
+            }
+            for node,value in sorted(self.nodes.items())
+            if value.serial or value.long_address
+        }
 
     def snapshot(self)->dict:
         return {f"{node:04X}":asdict(value) for node,value in sorted(self.nodes.items())}
