@@ -2,6 +2,11 @@ name: Build HACS beta release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, e.g. 0.0.4-beta.2"
+        required: true
+        default: "0.0.4-beta.2"
   push:
     tags:
       - "v*"
@@ -15,23 +20,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve tag
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify manifest version
+        shell: bash
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${TAG#v}"
+          python - <<'PY'
+          import json, os
+          version=json.load(open("custom_components/tigo_tap_local/manifest.json"))["version"]
+          expected=os.environ["EXPECTED"].removeprefix("v")
+          if version != expected:
+              raise SystemExit(f"manifest version {version} != release version {expected}")
+          PY
+        env:
+          EXPECTED: ${{ steps.version.outputs.tag }}
+
+      - name: Create tag for manual release
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
       - name: Build HACS zip
         run: |
           cd custom_components/tigo_tap_local
           zip -r ../../tigo_tap_local.zip .
           cd ../..
 
-      - name: Create GitHub release for tag
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Create GitHub prerelease
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          prerelease: true
           files: tigo_tap_local.zip
           generate_release_notes: true
-
-      - name: Upload manually triggered beta artifact
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: tigo_tap_local-beta
-          path: tigo_tap_local.zip
