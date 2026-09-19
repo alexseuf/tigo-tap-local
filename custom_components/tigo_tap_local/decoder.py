@@ -46,6 +46,11 @@ class TapProtocolDecoder:
         self.topology_reports=0
         self.pv_packets=0
         self.decode_errors=0
+        self.frames_total=0
+        self.crc_valid=0
+        self.crc_errors=0
+        self.receive_responses=0
+        self.power_report_rejected=0
 
     @staticmethod
     def _unescape(data:bytes)->bytes:
@@ -74,16 +79,36 @@ class TapProtocolDecoder:
     def _u12pair(data:bytes)->tuple[int,int]:
         return ((data[0]<<4)|(data[1]>>4),((data[1]&15)<<8)|data[2])
 
+    @staticmethod
+    def _crc16(data:bytes)->int:
+        """Tigo gateway CRC-16/CCITT, reflected polynomial 0x8408, init 0x8408."""
+        crc=0x8408
+        for value in data:
+            crc ^= value
+            for _ in range(8):
+                crc=(crc>>1)^0x8408 if crc&1 else crc>>1
+        return crc & 0xFFFF
+
     def consume_wire_frame(self,wire:bytes)->None:
+        self.frames_total+=1
         try:
-            if not (wire.startswith(b"\x7e\x07") and wire.endswith(b"\x7e\x08")): return
+            if not (wire.startswith(b"\x7e\x07") and wire.endswith(b"\x7e\x08")):
+                self.decode_errors+=1; return
             body=self._unescape(wire[2:-2])
-            if len(body)<6:return
+            if len(body)<6:
+                self.decode_errors+=1; return
+            expected=int.from_bytes(body[-2:],"little")
+            actual=self._crc16(body[:-2])
+            if actual!=expected:
+                self.crc_errors+=1
+                return
+            self.crc_valid+=1
             addr=int.from_bytes(body[0:2],"big"); ftype=int.from_bytes(body[2:4],"big")
             payload=body[4:-2]; gateway=addr&0x7FFF
             if ftype==0x0148 and not(addr&0x8000) and len(payload)>=4:
                 self.packet_numbers[gateway]=int.from_bytes(payload[2:4],"big")
             elif ftype==0x0149 and (addr&0x8000):
+                self.receive_responses+=1
                 self._receive_response(gateway,payload)
         except (IndexError,ValueError,OverflowError):
             self.decode_errors+=1
@@ -122,7 +147,9 @@ class TapProtocolDecoder:
         return self.nodes.setdefault(node,NodeTelemetry(node_id=node))
 
     def _power(self,node:int,data:bytes)->None:
-        if len(data) not in (13,15):return
+        if len(data) not in (13,15):
+            self.power_report_rejected+=1
+            return
         vin,vout=self._u12pair(data[0:3]); current,temp=self._u12pair(data[4:7])
         vin*=0.05; vout*=0.10; iin=current*0.005; power=vin*iin
         n=self._node(node); n.voltage_in=round(vin,2); n.voltage_out=round(vout,2)
@@ -133,7 +160,8 @@ class TapProtocolDecoder:
         n.last_seen=now; n.last_power_report=now; n.reports+=1; self.power_reports+=1
 
     def _topology(self,node:int,data:bytes)->None:
-        if len(data)!=23:return
+        # TopologyReport is 22 bytes in the reverse-engineered protocol.
+        if len(data)!=22:return
         long_addr=data[8:16]
         n=self._node(node); n.long_address=":".join(f"{b:02X}" for b in long_addr); n.serial=self._barcode(long_addr)
         n.last_seen=datetime.now(timezone.utc).isoformat(); self.topology_reports+=1
