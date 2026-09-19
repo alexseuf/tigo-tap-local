@@ -62,6 +62,14 @@ Existing reverse-engineering work indicates that CCA↔TAP communication uses ha
 
 This repository will document observations separately from assumptions. See [docs/protocol.md](docs/protocol.md).
 
+## Home Assistant / HACS
+
+A HACS-compatible Home Assistant custom-integration scaffold is included under `custom_components/tigo_tap_local`.
+
+For installation and the planned stable/test update channel, see [docs/installation.md](docs/installation.md).
+
+**Current limitation:** the integration is installable scaffolding; active CCA-less TAP polling is not implemented yet. Test releases must therefore be treated as experimental.
+
 ## Development phases
 
 1. Document hardware and protocol.
