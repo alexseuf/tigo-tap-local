@@ -1,11 +1,5 @@
 {
-  "domain": "tigo_tap_local",
-  "name": "Tigo TAP Local",
-  "codeowners": ["@alexseuf"],
-  "config_flow": true,
-  "documentation": "https://github.com/alexseuf/tigo-tap-local",
-  "issue_tracker": "https://github.com/alexseuf/tigo-tap-local/issues",
-  "iot_class": "local_push",
-  "requirements": ["pyserial>=3.5"],
-  "version": "0.0.3-beta.1"
+  "domain":"tigo_tap_local","name":"Tigo TAP Local","codeowners":["@alexseuf"],"config_flow":true,
+  "documentation":"https://github.com/alexseuf/tigo-tap-local","issue_tracker":"https://github.com/alexseuf/tigo-tap-local/issues",
+  "iot_class":"local_push","requirements":["pyserial>=3.5"],"version":"0.0.4-beta.1"
 }
