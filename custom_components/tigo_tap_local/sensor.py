@@ -18,7 +18,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         TapFramesSensor(entry, receiver),
         TapBytesSensor(entry, receiver),
         TapLastFrameSensor(entry, receiver),
-        TapFrameHistorySensor(entry, receiver),\n        TapDecodedNodesSensor(entry, receiver),\n        TapPowerReportsSensor(entry, receiver),
+        TapFrameHistorySensor(entry, receiver),
+        TapDecodedNodesSensor(entry, receiver),
+        TapPowerReportsSensor(entry, receiver),
     ])
 
 
