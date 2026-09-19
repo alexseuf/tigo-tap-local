@@ -1,0 +1,37 @@
+name: Build HACS beta release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build HACS zip
+        run: |
+          cd custom_components/tigo_tap_local
+          zip -r ../../tigo_tap_local.zip .
+          cd ../..
+
+      - name: Create GitHub release for tag
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          files: tigo_tap_local.zip
+          generate_release_notes: true
+
+      - name: Upload manually triggered beta artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tigo_tap_local-beta
+          path: tigo_tap_local.zip
