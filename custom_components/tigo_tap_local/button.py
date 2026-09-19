@@ -18,6 +18,17 @@ class DiagnosticsZipButton(ButtonEntity):
         self._attr_unique_id=f"{entry.entry_id}_create_diagnostics_zip"
         self.receiver=receiver
         self._running=False
+        self._last_created=None
+        self._last_size=None
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "status": "creating" if self._running else "ready",
+            "download_url": self.receiver.zip_url if self.receiver.zip_path.exists() else None,
+            "last_created": self._last_created,
+            "zip_size_bytes": self._last_size,
+        }
 
     @property
     def available(self)->bool:
@@ -47,6 +58,12 @@ class DiagnosticsZipButton(ButtonEntity):
             )
             raise
         else:
+            from datetime import datetime, timezone
+            self._last_created=datetime.now(timezone.utc).isoformat()
+            try:
+                self._last_size=self.receiver.zip_path.stat().st_size
+            except OSError:
+                self._last_size=None
             persistent_notification.async_create(
                 self.hass,
                 f'Das Diagnosepaket ist fertig. [ZIP jetzt herunterladen]({self.receiver.zip_url})',
