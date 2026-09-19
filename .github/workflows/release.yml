@@ -45,6 +45,52 @@ jobs:
         env:
           EXPECTED: ${{ steps.version.outputs.tag }}
 
+      - name: Validate Python syntax
+        shell: bash
+        run: |
+          python -m compileall -q -f custom_components/tigo_tap_local
+
+      - name: Reject accidental literal newline escapes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tokenize
+
+          root = Path("custom_components/tigo_tap_local")
+          problems = []
+
+          for path in root.rglob("*.py"):
+              source = path.read_text(encoding="utf-8")
+
+              # Remove strings and comments before checking. Legitimate "\\n"
+              # sequences inside strings (for example log output) are allowed.
+              masked = list(source)
+              try:
+                  tokens = tokenize.generate_tokens(iter(source.splitlines(True)).__next__)
+                  for token in tokens:
+                      if token.type in (tokenize.STRING, tokenize.COMMENT):
+                          start_line, start_col = token.start
+                          end_line, end_col = token.end
+                          lines = source.splitlines(True)
+                          start = sum(map(len, lines[:start_line - 1])) + start_col
+                          end = sum(map(len, lines[:end_line - 1])) + end_col
+                          for i in range(start, min(end, len(masked))):
+                              if masked[i] != "\\n":
+                                  masked[i] = " "
+              except (tokenize.TokenError, IndentationError) as err:
+                  raise SystemExit(f"{path}: tokenization failed: {err}")
+
+              code_only = "".join(masked)
+              if "\\\\n" in code_only:
+                  for lineno, line in enumerate(code_only.splitlines(), 1):
+                      if "\\\\n" in line:
+                          problems.append(f"{path}:{lineno}: literal \\\\n outside string/comment")
+
+          if problems:
+              raise SystemExit("\\n".join(problems))
+          PY
+
       - name: Create tag for manual release
         if: github.event_name == 'workflow_dispatch'
         shell: bash
