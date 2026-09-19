@@ -24,6 +24,7 @@ class NodeTelemetry:
     rssi:int|None=None
     slot_counter:int|None=None
     last_seen:str|None=None
+    last_power_report:str|None=None
     reports:int=0
 
 class TapProtocolDecoder:
@@ -128,7 +129,8 @@ class TapProtocolDecoder:
         n.current_in=round(iin,3); n.current_out=round(power/vout,3) if vout else None
         n.power=round(power,1); n.duty_cycle=round(data[3]*100/255,2); n.temperature=round(temp*0.1,1)
         n.slot_counter=int.from_bytes(data[10:12],"big"); n.rssi=data[12]
-        n.last_seen=datetime.now(timezone.utc).isoformat(); n.reports+=1; self.power_reports+=1
+        now=datetime.now(timezone.utc).isoformat()
+        n.last_seen=now; n.last_power_report=now; n.reports+=1; self.power_reports+=1
 
     def _topology(self,node:int,data:bytes)->None:
         if len(data)!=23:return
