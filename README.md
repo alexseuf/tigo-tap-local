@@ -68,7 +68,17 @@ A HACS-compatible Home Assistant custom-integration scaffold is included under `
 
 For installation and the planned stable/test update channel, see [docs/installation.md](docs/installation.md).
 
-**Current limitation:** the integration is installable scaffolding; active CCA-less TAP polling is not implemented yet. Test releases must therefore be treated as experimental.
+### One-click HACS setup
+
+[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alexseuf&repository=tigo-tap-local&category=integration)
+
+If the button is not accepted by a particular HACS version, add this repository as a custom **Integration** repository using the instructions in [docs/installation.md](docs/installation.md).
+
+### Current beta: passive RS485 receiver
+
+Version `0.0.2-beta.1` adds a receive-only RS485 test mode. It opens the selected USB-RS485 device at 38400 8N1, never calls `write()`, logs raw RX bytes at debug level and extracts observed TAP-style frames delimited by `7E 07 ... 7E 08`.
+
+Home Assistant exposes diagnostic sensors for connection status, received byte count, frame count and the most recently observed frame. This is deliberately passive: it is intended first for sniffing a live CCA↔TAP bus. Active CCA-less TAP polling is still not implemented.
 
 ## Development phases
 
