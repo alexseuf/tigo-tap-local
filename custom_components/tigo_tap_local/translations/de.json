@@ -1,0 +1,13 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tigo TAP Local",
+        "description": "Experimentelle lokale Tigo-TAP-Integration. Die RS485-Konfiguration wird ergänzt, sobald das aktive TAP-Polling bereit ist."
+      }
+    },
+    "abort": {
+      "already_configured": "Tigo TAP Local ist bereits konfiguriert."
+    }
+  }
+}
