@@ -160,8 +160,10 @@ class TapProtocolDecoder:
         n.last_seen=now; n.last_power_report=now; n.reports+=1; self.power_reports+=1
 
     def _topology(self,node:int,data:bytes)->None:
-        # TopologyReport is 22 bytes in the reverse-engineered protocol.
-        if len(data)!=22:return
+        # TapTap's reverse-engineered struct implies 22 bytes, while real
+        # CCA<->TAP captures from 2026-09-19 contain 23-byte variants.
+        # The identity fields share the same offsets in both forms.
+        if len(data) not in (22,23):return
         long_addr=data[8:16]
         n=self._node(node); n.long_address=":".join(f"{b:02X}" for b in long_addr); n.serial=self._barcode(long_addr)
         n.last_seen=datetime.now(timezone.utc).isoformat(); self.topology_reports+=1
